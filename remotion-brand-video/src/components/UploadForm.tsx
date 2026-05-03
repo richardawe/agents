@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { PageData } from '../App';
-import { captureFromHtml, captureFromImage } from '../utils/capture';
+import { analyzeHtmlFile, imageAnalysisFromFile } from '../utils/analyzeHtml';
 
 interface Props {
   onCapture: (data: PageData) => void;
@@ -9,36 +9,48 @@ interface Props {
 const ACCEPTED = '.html,image/png,image/jpeg,image/webp,image/gif';
 
 export function UploadForm({ onCapture }: Props) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]     = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
-  const [error, setError] = useState('');
-  const [dragOver, setDragOver] = useState(false);
+  const [step, setStep]           = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
+  const [error, setError]         = useState('');
+  const [dragOver, setDragOver]   = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
     setError('');
     setLoading(true);
+    setStep(0);
+    setTotalSteps(0);
 
     try {
-      let screenshot: string;
+      let sourceName = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
 
       if (file.type.startsWith('image/')) {
         setLoadingMsg('Reading image…');
-        screenshot = await captureFromImage(file);
+        const analysis = await imageAnalysisFromFile(file);
+        onCapture({ analysis, sourceName });
       } else if (file.name.endsWith('.html') || file.type === 'text/html') {
-        setLoadingMsg('Rendering your page…');
-        screenshot = await captureFromHtml(file);
+        // Parse the HTML step-count from "Capturing section N of M"
+        const analysis = await analyzeHtmlFile(file, (msg) => {
+          setLoadingMsg(msg);
+          const m = msg.match(/Capturing section (\d+) of (\d+)/);
+          if (m) {
+            setStep(Number(m[1]));
+            setTotalSteps(Number(m[2]));
+          }
+        });
+        sourceName = analysis.title || sourceName;
+        onCapture({ analysis, sourceName });
       } else {
-        throw new Error('Upload an HTML file or an image (PNG, JPG, WebP)');
+        throw new Error('Please upload an HTML file or an image (PNG, JPG, WebP)');
       }
-
-      const sourceName = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-      onCapture({ screenshot, sourceName });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
       setLoadingMsg('');
+      setStep(0);
     }
   }
 
@@ -52,9 +64,10 @@ export function UploadForm({ onCapture }: Props) {
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
-    // Reset so the same file can be re-selected
     e.target.value = '';
   }
+
+  const progressPct = totalSteps > 0 ? Math.round((step / totalSteps) * 100) : null;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -67,7 +80,7 @@ export function UploadForm({ onCapture }: Props) {
           Turn your webpage into<br />a brand reel
         </h2>
         <p className="text-gray-400 text-lg max-w-md mx-auto">
-          Upload an HTML file or a screenshot — we'll animate it into a polished 10-second video
+          Upload an HTML file and we'll detect your key features, then animate each one into a polished brand video
         </p>
       </div>
 
@@ -83,8 +96,8 @@ export function UploadForm({ onCapture }: Props) {
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
-        onClick={() => fileRef.current?.click()}
-        onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
+        onClick={() => !loading && fileRef.current?.click()}
+        onKeyDown={(e) => e.key === 'Enter' && !loading && fileRef.current?.click()}
       >
         <input
           ref={fileRef}
@@ -95,10 +108,26 @@ export function UploadForm({ onCapture }: Props) {
         />
 
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-gray-300 font-medium">{loadingMsg}</p>
-            <p className="text-gray-600 text-sm">This may take a few seconds</p>
+            <p className="text-gray-200 font-medium">{loadingMsg || 'Analyzing…'}</p>
+
+            {progressPct !== null && (
+              <div className="max-w-xs mx-auto">
+                <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                  <span>Section {step} of {totalSteps}</span>
+                  <span>{progressPct}%</span>
+                </div>
+                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <p className="text-gray-600 text-sm">Please wait — this can take 10–30 seconds</p>
           </div>
         ) : (
           <>

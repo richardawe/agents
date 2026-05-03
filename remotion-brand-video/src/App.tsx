@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import type { PageAnalysis } from './types';
 import { UploadForm } from './components/UploadForm';
 import { VideoPreview } from './components/VideoPreview';
 
 export interface PageData {
-  screenshot: string;
+  analysis: PageAnalysis;
   sourceName: string;
 }
 
@@ -15,7 +16,7 @@ export default function App() {
       <header className="border-b border-gray-800/60 px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-sm font-bold">
+            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-sm font-bold select-none">
               B
             </div>
             <span className="font-bold tracking-tight">Brand Reel</span>
