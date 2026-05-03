@@ -11,7 +11,7 @@ export const IntroScene: React.FC<Props> = ({ screenshot, brandName, accentColor
 
   const opacity     = interpolate(frame, [0, 20], [0, 1], { extrapolateRight: 'clamp' });
   const scale       = interpolate(frame, [20, 90], [1.0, 1.08], {
-    easing: Easing.inOut(Easing.sine),
+    easing: Easing.inOut(Easing.sin),
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
   });
   const titleOpacity = interpolate(frame, [55, 85], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });

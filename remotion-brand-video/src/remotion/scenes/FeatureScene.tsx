@@ -16,7 +16,7 @@ export const FeatureScene: React.FC<Props> = ({ feature, featureIndex, totalFeat
   const opacity       = interpolate(frame, [0, 25], [0, 1], { extrapolateRight: 'clamp' });
   // Slow Ken-Burns throughout scene
   const scale         = interpolate(frame, [0, FEATURE_FRAMES], [1.02, 1.12], {
-    easing: Easing.inOut(Easing.sine),
+    easing: Easing.inOut(Easing.sin),
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
   });
   // Bottom panel
