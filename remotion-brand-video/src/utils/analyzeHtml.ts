@@ -1,8 +1,6 @@
 import html2canvas from 'html2canvas';
 import type { Feature, PageAnalysis } from '../types';
-
-const W = 1280;
-const H = 720;
+import { CAP_W as W, CAP_H as H } from '../types';
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -148,7 +146,7 @@ export async function analyzeHtmlFile(
   const blobUrl = URL.createObjectURL(file);
   const iframe = document.createElement('iframe');
   iframe.style.cssText =
-    'position:fixed;left:-9999px;top:0;width:1280px;height:720px;border:none;visibility:hidden;pointer-events:none;';
+    `position:fixed;left:-9999px;top:0;width:${W}px;height:${H}px;border:none;visibility:hidden;pointer-events:none;`;
   document.body.appendChild(iframe);
 
   try {

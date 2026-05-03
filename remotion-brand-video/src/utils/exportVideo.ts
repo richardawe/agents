@@ -4,11 +4,12 @@ import {
   FEATURE_FRAMES,
   FPS,
   INTRO_FRAMES,
-  OUTRO_FRAMES,
+  VIDEO_W,
+  VIDEO_H,
 } from '../types';
 
-const W = 1280;
-const H = 720;
+const W = VIDEO_W; // 1080
+const H = VIDEO_H; // 1920
 
 // ── Easing / math helpers ──────────────────────────────────────────────────────
 
@@ -20,8 +21,7 @@ function remap(v: number, i0: number, i1: number, o0: number, o1: number, ease?:
   return o0 + (o1 - o0) * c01(e);
 }
 
-const easeOut  = (t: number) => 1 - Math.pow(1 - c01(t), 3);
-const easeInOut = (t: number) => { const t2 = c01(t); return t2 < 0.5 ? 4*t2*t2*t2 : 1 - Math.pow(-2*t2+2,3)/2; };
+const easeOut   = (t: number) => 1 - Math.pow(1 - c01(t), 3);
 const easeSine  = (t: number) => -(Math.cos(Math.PI * c01(t)) - 1) / 2;
 
 // ── Image preload ──────────────────────────────────────────────────────────────
@@ -35,53 +35,73 @@ function loadImg(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// ── Cover-scale draw helper ────────────────────────────────────────────────────
+// Scales img to fill the W×H canvas (like objectFit:cover), anchored to top or center.
+
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  zoomScale = 1.0,
+  anchorTop = false,
+) {
+  const base = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+  const s  = base * zoomScale;
+  const dw = img.naturalWidth  * s;
+  const dh = img.naturalHeight * s;
+  const dx = (W - dw) / 2;
+  const dy = anchorTop ? 0 : (H - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
+
 // ── Scene draw functions ───────────────────────────────────────────────────────
 
 function drawIntro(
   ctx: CanvasRenderingContext2D,
   fullImg: HTMLImageElement,
-  lf: number, // local frame 0..INTRO_FRAMES-1
+  lf: number,
   brandName: string,
   accentColor: string,
 ) {
   const opacity      = remap(lf, 0, 20, 0, 1);
-  const scale        = remap(lf, 20, INTRO_FRAMES, 1.0, 1.08, easeSine);
+  const scale        = remap(lf, 20, 90, 1.0, 1.08, easeSine);
   const titleOpacity = remap(lf, 55, 85, 0, 1);
-  const titleY       = remap(lf, 55, 85, 22, 0, easeOut);
+  const titleY       = remap(lf, 55, 85, Math.round(H * 0.015), 0, easeOut);
+
+  const fontSize  = Math.round(W * 0.1);    // 108
+  const barW      = Math.round(W * 0.1);    // 108
+  const bottomPad = Math.round(H * 0.055);  // 106
 
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  // Screenshot (zoom from top-center)
   ctx.save();
   ctx.globalAlpha = c01(opacity);
-  const dw = W * scale, dh = H * scale;
-  ctx.drawImage(fullImg, (W - dw) / 2, 0, dw, dh);
+  drawCover(ctx, fullImg, scale, true);
   ctx.restore();
 
   // Bottom gradient
   ctx.save();
   ctx.globalAlpha = c01(opacity);
-  const g = ctx.createLinearGradient(0, H * 0.42, 0, H);
+  const g = ctx.createLinearGradient(0, H * 0.45, 0, H);
   g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, 'rgba(0,0,0,0.72)');
+  g.addColorStop(1, 'rgba(0,0,0,0.78)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
 
-  // Brand name
   if (titleOpacity > 0) {
-    const y = H - 68 + titleY;
+    const nameY  = H - bottomPad + titleY;
+    const barTopY = nameY + Math.round(H * 0.01);
+
     ctx.save();
     ctx.globalAlpha = c01(titleOpacity);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.font = '800 52px Inter, system-ui, sans-serif';
-    ctx.fillText(brandName || 'Brand Name', W / 2, y, W - 96);
-    // Accent bar
+    ctx.font = `800 ${fontSize}px Inter, system-ui, sans-serif`;
+    ctx.fillText(brandName || 'Brand Name', W / 2, nameY, W - Math.round(W * 0.12));
     ctx.fillStyle = accentColor;
     ctx.beginPath();
-    ctx.roundRect(W / 2 - 28, y + 16, 56, 4, 2);
+    ctx.roundRect(W / 2 - barW / 2, barTopY, barW, 4, 2);
     ctx.fill();
     ctx.restore();
   }
@@ -99,20 +119,25 @@ function drawFeature(
   const opacity      = remap(lf, 0, 25, 0, 1);
   const scale        = remap(lf, 0, FEATURE_FRAMES, 1.02, 1.12, easeSine);
   const panelOpacity = remap(lf, 28, 58, 0, 1);
-  const accentW      = remap(lf, 42, 82, 0, 52, easeOut);
+  const accentW      = remap(lf, 42, 82, 0, Math.round(W * 0.09), easeOut);
   const titleOpacity = remap(lf, 48, 78, 0, 1);
-  const titleX       = remap(lf, 48, 78, -18, 0, easeOut);
+  const titleX       = remap(lf, 48, 78, -Math.round(W * 0.03), 0, easeOut);
   const descOpacity  = remap(lf, 68, 96, 0, 1);
   const dotOpacity   = remap(lf, 85, 110, 0, 1);
+
+  const hasText  = !!feature.title;
+  const padH     = Math.round(W * 0.059); // 64
+  const titleSize = Math.round(W * 0.088); // 95
+  const labelSize = Math.round(W * 0.026); // 28
+  const descSize  = Math.round(W * 0.042); // 45
 
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  // Screenshot (Ken-Burns centered)
+  // Screenshot
   ctx.save();
   ctx.globalAlpha = c01(opacity);
-  const dw = W * scale, dh = H * scale;
-  ctx.drawImage(featImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  drawCover(ctx, featImg, scale, false);
   ctx.restore();
 
   // Vignette
@@ -129,7 +154,7 @@ function drawFeature(
   if (panelOpacity > 0) {
     ctx.save();
     ctx.globalAlpha = c01(panelOpacity);
-    const g = ctx.createLinearGradient(0, H * 0.33, 0, H);
+    const g = ctx.createLinearGradient(0, H * 0.65, 0, H);
     g.addColorStop(0, 'rgba(0,0,0,0)');
     g.addColorStop(1, 'rgba(0,0,0,0.88)');
     ctx.fillStyle = g;
@@ -137,16 +162,19 @@ function drawFeature(
     ctx.restore();
   }
 
-  // Text block
+  // Text block (bottom-anchored)
   if (titleOpacity > 0) {
-    const baseY = H - 56;
+    const descBaseline  = H - Math.round(H * 0.04);
+    const titleBaseline = descBaseline - Math.round(descSize * 1.5) - Math.round(H * 0.008);
+    const labelBaseline = titleBaseline - Math.round(titleSize * 1.2) - Math.round(H * 0.007);
+    const accentTopY    = labelBaseline - labelSize - Math.round(H * 0.012);
 
     // Accent line
     ctx.save();
     ctx.globalAlpha = c01(titleOpacity);
     ctx.fillStyle = accentColor;
     ctx.beginPath();
-    ctx.roundRect(64, baseY - 98, c01(accentW / 52) * 52, 3, 1.5);
+    ctx.roundRect(padH, accentTopY, accentW, 4, 2);
     ctx.fill();
     ctx.restore();
 
@@ -155,46 +183,59 @@ function drawFeature(
     ctx.globalAlpha = c01(titleOpacity);
     ctx.textAlign = 'left';
     ctx.fillStyle = accentColor;
-    ctx.font = '600 12px Inter, system-ui, sans-serif';
-    ctx.fillText(`FEATURE ${featureIndex + 1} / ${totalFeatures}`, 64, baseY - 70);
+    ctx.font = `600 ${labelSize}px Inter, system-ui, sans-serif`;
+    ctx.fillText(
+      hasText ? `FEATURE ${featureIndex + 1} / ${totalFeatures}` : `SECTION ${featureIndex + 1}`,
+      padH,
+      labelBaseline,
+    );
     ctx.restore();
 
     // Title
-    ctx.save();
-    ctx.globalAlpha = c01(titleOpacity);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = '800 48px Inter, system-ui, sans-serif';
-    ctx.fillText(feature.title, 64 + titleX, baseY - 22, W - 128);
-    ctx.restore();
+    if (hasText) {
+      ctx.save();
+      ctx.globalAlpha = c01(titleOpacity);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fff';
+      ctx.font = `800 ${titleSize}px Inter, system-ui, sans-serif`;
+      ctx.fillText(feature.title, padH + titleX, titleBaseline, W - padH * 2);
+      ctx.restore();
+    }
 
     // Description
-    const shortDesc = feature.description.length > 110
-      ? feature.description.slice(0, 110) + '…'
+    const shortDesc = feature.description.length > 100
+      ? feature.description.slice(0, 100) + '…'
       : feature.description;
-    if (shortDesc && descOpacity > 0) {
+    if (hasText && shortDesc && descOpacity > 0) {
       ctx.save();
       ctx.globalAlpha = c01(descOpacity * 0.68);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.font = '400 20px Inter, system-ui, sans-serif';
-      ctx.fillText(shortDesc, 64, baseY + 26, W - 128);
+      ctx.font = `400 ${descSize}px Inter, system-ui, sans-serif`;
+      ctx.fillText(shortDesc, padH, descBaseline, W - padH * 2);
       ctx.restore();
     }
   }
 
-  // Progress dots
+  // Progress dots (top-center)
   if (dotOpacity > 0) {
+    const dotH       = Math.round(W * 0.012); // 13
+    const activeDotW = Math.round(W * 0.038); // 41
+    const gap        = Math.round(W * 0.018); // 19
+    const totalDotW  = totalFeatures * dotH + (totalFeatures - 1) * gap + (activeDotW - dotH);
+    let dotX = (W - totalDotW) / 2;
+    const dotY = Math.round(H * 0.025);
+
     ctx.save();
     ctx.globalAlpha = c01(dotOpacity);
-    let dotX = W - 48 - totalFeatures * 14;
     for (let d = 0; d < totalFeatures; d++) {
       const isActive = d === featureIndex;
+      const dw = isActive ? activeDotW : dotH;
       ctx.fillStyle = isActive ? accentColor : 'rgba(255,255,255,0.3)';
       ctx.beginPath();
-      ctx.roundRect(dotX, 32, isActive ? 20 : 6, 6, 3);
+      ctx.roundRect(dotX, dotY, dw, dotH, dotH / 2);
       ctx.fill();
-      dotX += isActive ? 28 : 14;
+      dotX += dw + gap;
     }
     ctx.restore();
   }
@@ -209,19 +250,21 @@ function drawOutro(
   accentColor: string,
 ) {
   const opacity        = remap(lf, 0, 20, 0, 1);
-  const scale          = remap(lf, 0, OUTRO_FRAMES, 1.06, 1.0, easeOut);
+  const scale          = remap(lf, 0, 90, 1.06, 1.0, easeOut);
   const overlayAlpha   = remap(lf, 0, 45, 0, 0.91, easeOut);
   const contentOpacity = remap(lf, 32, 72, 0, 1);
-  const contentY       = remap(lf, 32, 72, 26, 0, easeOut);
-  const barW           = remap(lf, 60, 88, 0, 80, easeOut);
+  const contentY       = remap(lf, 32, 72, Math.round(H * 0.035), 0, easeOut);
+  const barW           = remap(lf, 60, 88, 0, Math.round(W * 0.14), easeOut);
+
+  const titleSize = Math.round(W * 0.13);  // 140
+  const urlSize   = Math.round(W * 0.038); // 41
 
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
   ctx.save();
   ctx.globalAlpha = c01(opacity);
-  const dw = W * scale, dh = H * scale;
-  ctx.drawImage(fullImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  drawCover(ctx, fullImg, scale, false);
   ctx.restore();
 
   if (overlayAlpha > 0) {
@@ -233,24 +276,29 @@ function drawOutro(
   }
 
   if (contentOpacity > 0) {
-    const cy = H / 2 + contentY;
     ctx.save();
     ctx.globalAlpha = c01(contentOpacity);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
-    ctx.font = '800 80px Inter, system-ui, sans-serif';
-    ctx.fillText(brandName || 'Brand Name', W / 2, cy - 20, W - 96);
 
+    const titleY = H / 2 + contentY;
+    ctx.fillStyle = '#fff';
+    ctx.font = `800 ${titleSize}px Inter, system-ui, sans-serif`;
+    ctx.fillText(brandName || 'Brand Name', W / 2, titleY, W - Math.round(W * 0.16));
+
+    let nextY = titleY + Math.round(H * 0.018) + urlSize;
     if (siteUrl) {
-      ctx.font = '400 21px Inter, system-ui, sans-serif';
-      ctx.globalAlpha = c01(contentOpacity * 0.52);
-      ctx.fillText(siteUrl.toUpperCase(), W / 2, cy + 32, W - 96);
+      ctx.font = `400 ${urlSize}px Inter, system-ui, sans-serif`;
+      ctx.globalAlpha = c01(contentOpacity * 0.5);
+      ctx.fillText(siteUrl.toUpperCase(), W / 2, nextY, W - Math.round(W * 0.16));
+      nextY += Math.round(H * 0.025);
+    } else {
+      nextY = titleY + Math.round(H * 0.025);
     }
 
     ctx.globalAlpha = c01(contentOpacity);
     ctx.fillStyle = accentColor;
     ctx.beginPath();
-    ctx.roundRect(W / 2 - barW / 2, cy + (siteUrl ? 62 : 36), barW, 4, 2);
+    ctx.roundRect(W / 2 - barW / 2, nextY, barW, 5, 2.5);
     ctx.fill();
     ctx.restore();
   }
@@ -260,7 +308,7 @@ function drawOutro(
 
 export interface ExportOptions {
   analysis: PageAnalysis;
-  features: Feature[]; // may differ from analysis.features (user may edit/delete)
+  features: Feature[];
   brandName: string;
   siteUrl: string;
   accentColor: string;
@@ -277,10 +325,8 @@ export async function exportVideo({
   onProgress,
   shouldCancel,
 }: ExportOptions): Promise<Blob> {
-  // Wait for fonts to be ready so canvas text renders correctly
   await document.fonts.ready;
 
-  // Pre-load all images
   const [fullImg, ...featImgs] = await Promise.all([
     loadImg(analysis.fullScreenshot),
     ...features.map((f) => loadImg(f.screenshot)),
@@ -289,7 +335,7 @@ export async function exportVideo({
   const totalFrames = calcTotalFrames(features.length);
 
   const canvas = document.createElement('canvas');
-  canvas.width = W;
+  canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
@@ -297,8 +343,8 @@ export async function exportVideo({
     ? 'video/webm;codecs=vp9'
     : 'video/webm';
 
-  const stream = canvas.captureStream(FPS);
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+  const stream   = canvas.captureStream(FPS);
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 10_000_000 });
   const chunks: BlobPart[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
   recorder.start(100);
@@ -309,7 +355,6 @@ export async function exportVideo({
       throw new Error('Export cancelled');
     }
 
-    // Determine scene
     if (frame < INTRO_FRAMES) {
       drawIntro(ctx, fullImg, frame, brandName, accentColor);
     } else {

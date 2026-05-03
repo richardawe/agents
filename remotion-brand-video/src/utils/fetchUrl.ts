@@ -1,57 +1,103 @@
-// Tries two public CORS proxies in order so one failing doesn't block the user.
-const PROXIES: Array<(url: string) => string> = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
+import type { Feature, PageAnalysis } from '../types';
+import { CAP_W, CAP_H } from '../types';
 
 export function normalizeUrl(raw: string): string {
-  const trimmed = raw.trim();
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return 'https://' + trimmed;
+  const t = raw.trim();
+  return /^https?:\/\//i.test(t) ? t : 'https://' + t;
 }
 
-function injectBase(html: string, url: string): string {
-  // Resolve all relative paths against the original origin
-  const baseTag = `<base href="${url}">`;
-  const match = html.match(/<head[^>]*>/i);
-  if (match) return html.replace(match[0], `${match[0]}${baseTag}`);
-  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => m + baseTag);
-  return baseTag + html;
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read screenshot'));
+    reader.readAsDataURL(blob);
+  });
 }
 
-function timedFetch(url: string, ms = 20_000): Promise<Response> {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(id));
+function loadImg(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to decode screenshot'));
+    img.src = src;
+  });
 }
 
-export async function fetchUrlAsHtml(rawUrl: string): Promise<string> {
+/**
+ * Crop a viewport-sized slice from a full-page screenshot.
+ * The image is already CAP_W pixels wide (served by thum.io at that width).
+ */
+function cropViewport(img: HTMLImageElement, y: number): string {
+  const canvas = document.createElement('canvas');
+  canvas.width  = CAP_W;
+  canvas.height = CAP_H;
+  const ctx = canvas.getContext('2d')!;
+  const srcH = Math.min(CAP_H, img.naturalHeight - y);
+  ctx.drawImage(img, 0, y, CAP_W, srcH, 0, 0, CAP_W, srcH);
+  return canvas.toDataURL('image/jpeg', 0.88);
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches a full-page screenshot of the URL via thum.io (no API key required),
+ * slices it into mobile-viewport sections, and returns a PageAnalysis ready
+ * for the video pipeline — identical to uploading an HTML file.
+ */
+export async function fetchUrlScreenshots(
+  rawUrl: string,
+  onProgress?: (msg: string) => void,
+): Promise<PageAnalysis> {
   const url = normalizeUrl(rawUrl);
-  let lastMessage = '';
+  const hostname = new URL(url).hostname.replace(/^www\./, '');
 
-  for (const buildProxy of PROXIES) {
-    try {
-      const res = await timedFetch(buildProxy(url));
-      if (!res.ok) { lastMessage = `HTTP ${res.status} from proxy`; continue; }
+  onProgress?.('Taking screenshot…');
 
-      const text = await res.text();
-      if (!text.includes('<')) { lastMessage = 'Response does not look like HTML'; continue; }
+  // thum.io renders the page headlessly at CAP_W px width and returns the
+  // full-page JPEG — no auth needed for the free tier.
+  const thumbUrl = `https://image.thum.io/get/width/${CAP_W}/fullpage/${url}`;
 
-      return injectBase(text, url);
-    } catch (e) {
-      lastMessage = (e as Error).message ?? String(e);
-    }
+  let res: Response;
+  try {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 35_000);
+    res = await fetch(thumbUrl, { signal: ctrl.signal });
+    clearTimeout(timer);
+  } catch {
+    throw new Error(
+      'Could not reach the screenshot service — check your connection, or upload the HTML file directly.',
+    );
   }
 
-  // Surface a helpful error
-  const blocked =
-    lastMessage.toLowerCase().includes('failed to fetch') ||
-    lastMessage.toLowerCase().includes('networkerror') ||
-    lastMessage.toLowerCase().includes('abort');
+  if (!res.ok) {
+    throw new Error(
+      `Screenshot service returned ${res.status}. The site may block screenshots — try uploading the HTML file.`,
+    );
+  }
 
-  throw new Error(
-    blocked
-      ? 'Could not reach that URL — the site may block external requests. Try saving the page as HTML and uploading the file instead.'
-      : `Could not load URL: ${lastMessage}`,
-  );
+  onProgress?.('Processing screenshot…');
+  const dataUrl = await blobToDataUrl(await res.blob());
+  const img     = await loadImg(dataUrl);
+
+  // Above-the-fold hero
+  const fullScreenshot = cropViewport(img, 0);
+
+  // Up to 4 additional sections (every CAP_H pixels)
+  const features: Feature[] = [];
+  for (let i = 0; i < 4; i++) {
+    const y = (i + 1) * CAP_H;
+    if (y >= img.naturalHeight) break;
+    features.push({
+      id: `feat-url-${i}`,
+      title: '',
+      description: '',
+      screenshot: cropViewport(img, y),
+      scrollY: y,
+    });
+  }
+
+  return { fullScreenshot, title: hostname, description: '', features, accentColor: '#6366f1' };
 }

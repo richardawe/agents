@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { PageData } from '../App';
 import { analyzeHtmlFile, imageAnalysisFromFile } from '../utils/analyzeHtml';
-import { fetchUrlAsHtml, normalizeUrl } from '../utils/fetchUrl';
+import { fetchUrlScreenshots } from '../utils/fetchUrl';
 
 interface Props {
   onCapture: (data: PageData) => void;
@@ -37,23 +37,15 @@ export function UploadForm({ onCapture }: Props) {
   // ── URL flow ──────────────────────────────────────────────────────────────
 
   async function handleUrl(raw: string) {
-    const url = normalizeUrl(raw);
     setError('');
     setLoading(true);
     setStep(0);
     setTotalSteps(0);
 
     try {
-      setLoadingMsg('Fetching page…');
-      const html = await fetchUrlAsHtml(url);
-
-      setLoadingMsg('Loading your page…');
-      const blob = new Blob([html], { type: 'text/html' });
-      const file = new File([blob], 'page.html', { type: 'text/html' });
-
-      // Derive a friendly name from the hostname
-      const hostname = new URL(url).hostname.replace(/^www\./, '');
-      await analyzeFile(file, hostname);
+      const analysis = await fetchUrlScreenshots(raw, (msg) => setLoadingMsg(msg));
+      const sourceName = analysis.title;
+      onCapture({ analysis, sourceName });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -193,8 +185,8 @@ export function UploadForm({ onCapture }: Props) {
 
           <div className="bg-gray-900/60 border border-gray-800 rounded-xl px-4 py-3 text-xs text-gray-500 space-y-1">
             <p className="font-medium text-gray-400">How it works</p>
-            <p>We fetch the page through a CORS proxy, inject it into a sandboxed renderer, then detect and screenshot each key section — the same pipeline as uploading an HTML file.</p>
-            <p className="text-gray-600">Sites that block external requests may not load correctly. In that case, save the page as HTML and use the Upload tab.</p>
+            <p>We take a full-page screenshot of your site at mobile width, then slice it into sections — no HTML parsing, works with any framework or SPA.</p>
+            <p className="text-gray-600">If the screenshot service can't reach the site, save the page as HTML and use the Upload tab instead.</p>
           </div>
         </form>
 
