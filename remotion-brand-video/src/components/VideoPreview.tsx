@@ -5,7 +5,7 @@ import type { Feature } from '../types';
 import { BrandVideo } from '../remotion/BrandVideo';
 import { FeatureEditor } from './FeatureEditor';
 import { exportVideo } from '../utils/exportVideo';
-import { calcDurationSecs, calcTotalFrames } from '../types';
+import { calcDurationSecs, calcTotalFrames, VIDEO_W, VIDEO_H } from '../types';
 
 interface Props {
   pageData: PageData;
@@ -89,7 +89,7 @@ export function VideoPreview({ pageData, onReset }: Props) {
           <span aria-hidden>←</span> Start over
         </button>
         <span className="text-xs text-gray-600 tabular-nums">
-          1280 × 720 · 30 fps · {durationSecs} s
+          1080 × 1920 · 30 fps · {durationSecs} s
           {features.length > 0 && (
             <span className="ml-2 text-gray-700">
               ({features.length} feature{features.length !== 1 ? 's' : ''})
@@ -98,21 +98,23 @@ export function VideoPreview({ pageData, onReset }: Props) {
         </span>
       </div>
 
-      {/* Remotion Player — re-keyed when feature count changes so durationInFrames syncs */}
-      <div className="rounded-2xl overflow-hidden border border-gray-800 bg-black shadow-2xl">
-        <Player
-          key={`player-${features.length}-${accentColor}`}
-          component={BrandVideo}
-          compositionWidth={1280}
-          compositionHeight={720}
-          durationInFrames={totalFrames}
-          fps={30}
-          inputProps={{ fullScreenshot: analysis.fullScreenshot, features, brandName, siteUrl, accentColor }}
-          style={{ width: '100%' }}
-          controls
-          loop
-          autoPlay
-        />
+      {/* Remotion Player — portrait, re-keyed when feature count changes so durationInFrames syncs */}
+      <div className="flex justify-center">
+        <div className="rounded-2xl overflow-hidden border border-gray-800 bg-black shadow-2xl" style={{ width: 360 }}>
+          <Player
+            key={`player-${features.length}-${accentColor}`}
+            component={BrandVideo}
+            compositionWidth={VIDEO_W}
+            compositionHeight={VIDEO_H}
+            durationInFrames={totalFrames}
+            fps={30}
+            inputProps={{ fullScreenshot: analysis.fullScreenshot, features, brandName, siteUrl, accentColor }}
+            style={{ width: '100%' }}
+            controls
+            loop
+            autoPlay
+          />
+        </div>
       </div>
 
       {/* Brand metadata */}
