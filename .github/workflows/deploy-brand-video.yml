@@ -3,9 +3,6 @@ name: Deploy Brand Reel to GitHub Pages
 on:
   push:
     branches: [main]
-    paths:
-      - 'remotion-brand-video/**'
-      - '.github/workflows/deploy-brand-video.yml'
   workflow_dispatch:
 
 permissions:
